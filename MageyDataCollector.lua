@@ -149,8 +149,12 @@ local function GetWeaponType()
 	end
 
 	-- get weapon type(s)
-	mainWeaponType = select(7, GetItemInfo(mainWeaponItemID))
-	offWeaponType = select(7, GetItemInfo(offWeaponItemID))
+	if mainWeaponItemID then
+		mainWeaponType = select(7, GetItemInfo(mainWeaponItemID))
+	end
+	if offWeaponItemID then
+		offWeaponType = select(7, GetItemInfo(offWeaponItemID))
+	end
 
 	-- get localized string by looking up info with the Unarmed spellID
 	local unarmed = GetSpellInfo(203)
@@ -197,9 +201,8 @@ local function GetAttackPower()
 	return effective
 end
 
-local function GetPlayerCritChance()
-	local crit = GetCritChance()
-	crit = tonumber(string.format("%.4f", crit))
+function GetPlayerCritChance()
+	return tonumber(string.format("%.4f", GetCritChance()))
 end
 
 --------------------------------------
