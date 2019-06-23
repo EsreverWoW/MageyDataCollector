@@ -1,0 +1,8 @@
+## Interface: 11302
+## Title: MageyDataCollector
+## Author: Es (EsreverWoW)
+## Version: 0.2
+## Notes: Log melee swing and character/target data to SavedVariables.
+## SavedVariables: MageyLogData
+
+MageyDataCollector.lua
