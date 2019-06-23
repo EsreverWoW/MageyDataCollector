@@ -4,7 +4,7 @@ local addon, ns = ...
 --	Settings
 --------------------------------------
 -- debug
-local isDebug = false
+local isDebug = true
 local debugLevel = 2
 
 -- log formatting
@@ -83,6 +83,9 @@ if logVersion == 2 then
 	PLAYER			= "PLAYER_STATS_CHANGED"
 	TARGET			= "PLAYER_TARGET_CHANGED"
 end
+
+local playerFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 12
+local targetFormat	= "%s,%s,%s,%s,%s" -- 5
 
 --------------------------------------
 --	Utility
@@ -220,11 +223,6 @@ function DataCollector:GetPlayerStats()
 		self.player.offWeaponType	= ohType or nil
 		self.player.mainWeaponSkill	= mhSkill or nil
 		self.player.offWeaponSkill	= ohSkill or nil
-	else
-		self.player.mainWeaponType	= nil
-		self.player.offWeaponType	= nil
-		self.player.mainWeaponSkill	= nil
-		self.player.offWeaponSkill	= nil
 	end
 	self.player.ap = GetAttackPower() or nil
 	self.player.crit = GetPlayerCritChance() or nil
@@ -236,7 +234,7 @@ function DataCollector:GetPlayerStats()
 	end
 
 	-- debug
-	debug("Player stats collected.", format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit)))
+	debug("Player stats collected.", format(playerFormat, currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit)))
 end
 
 function DataCollector:GetTargetStats()
@@ -253,7 +251,7 @@ function DataCollector:GetTargetStats()
 	end
 
 	-- debug
-	debug("Target stats collected.", format("%s,%s,%s,%s,%s", currentTime, TARGET, tostringall(self.target.guid, self.target.name, self.target.level)))
+	debug("Target stats collected.", format(targetFormat, currentTime, TARGET, tostringall(self.target.guid, self.target.name, self.target.level)))
 end
 
 function DataCollector:LogToSavedVariables(currentTime, logType, ...)
@@ -262,7 +260,7 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 
 	if logType == PLAYER then
 		-- set log string
-		logString = format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit))
+		logString = format(playerFormat, currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit))
 
 		-- insert entry into the SavedVariables log
 		tinsert(MageyLogData, logString)
@@ -271,7 +269,7 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 		debug(logType.." logged.", logString)
 	elseif logType == TARGET then
 		-- set log string
-		logString = format("%s,%s,%s,%s,%s", currentTime, logType, tostringall(self.target.guid, self.target.name, self.target.level))
+		logString = format(targetFormat, currentTime, logType, tostringall(self.target.guid, self.target.name, self.target.level))
 
 		-- insert entry into the SavedVariables log
 		tinsert(MageyLogData, logString)
@@ -373,6 +371,11 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 		-- shared arguments
 		local sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = select(2, ...)
 
+		-- locals
+		local spellID, spellName, spellSchool
+		local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand
+		local missType, amountMissed
+
 		-- 24 returns from CLEU (but we exclude hideCaster to match WoWCombatLog.txt - https://wow.gamepedia.com/COMBAT_LOG_EVENT
 		local swingHitFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 20
 		local swingMissFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 13
@@ -388,17 +391,17 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 		destRaidFlags	= string.format("0x%x", destRaidFlags)
 
 		if logType == "SWING_DAMAGE" then
-			local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(12, ...)
+			amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(10, ...)
 
 			-- set log string
 			logString = format(swingHitFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand))
 		elseif logType == "SWING_MISSED" then
-			local missType, isOffHand, amountMissed = select(12, ...)
+			missType, isOffHand, amountMissed = select(10, ...)
 
 			-- set log string
 			logString = format(swingMissFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed))
 		elseif logType == "SPELL_DAMAGE" then
-			local spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(12, ...)
+			spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(10, ...)
 
 			-- emulate WoWCombatLog.txt
 			spellName = "'"..spellName.."'"
@@ -406,7 +409,7 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 			-- set log string
 			logString = format(spellHitFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand))
 		elseif logType == "SPELL_MISSED" then
-			local spellID, spellName, spellSchool, missType, isOffHand, amountMissed = select(12, ...)
+			spellID, spellName, spellSchool, missType, isOffHand, amountMissed = select(10, ...)
 
 			-- emulate WoWCombatLog.txt
 			spellName = "'"..spellName.."'"
@@ -499,9 +502,6 @@ DataCollector:SetScript("OnEvent", function(self, event, ...)
 				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
 			end
 		elseif subEvent == "SWING_MISSED" then
-			-- only log if the combat log event is against our current target or the player
-			-- if destGUID ~= self.target.guid and destGUID ~= self.player.target then return end
-
 			-- get subEvent specific arguments
 			missType, isOffHand, amountMissed = select(12, CombatLogGetCurrentEventInfo())
 
@@ -538,9 +538,6 @@ DataCollector:SetScript("OnEvent", function(self, event, ...)
 				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
 			end
 		elseif subEvent == "SPELL_MISSED" then
-			-- only log if the combat log event is against our current target or the player
-			-- if destGUID ~= self.target.guid and destGUID ~= self.player.target then return end
-
 			-- get subEvent specific arguments
 			spellID, spellName, spellSchool, missType, isOffHand, amountMissed = select(12, CombatLogGetCurrentEventInfo())
 
