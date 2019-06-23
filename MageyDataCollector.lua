@@ -4,7 +4,7 @@ local addon, ns = ...
 --	Settings
 --------------------------------------
 -- debug
-local isDebug = true
+local isDebug = false
 local debugLevel = 2
 
 -- log formatting
