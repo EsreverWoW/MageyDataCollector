@@ -171,13 +171,23 @@ local function GetWeaponType()
 end
 
 local function GetWeaponSkill()
+	local mainWeaponType, offWeaponType = GetWeaponType()
+	local mainSkill, offSkill
+
 	local numSkills = GetNumSkillLines()
 	for i = 1, numSkills do
 		local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(i)
-		if skillName == GetWeaponType() then
-			return skillRank + numTempPoints + skillModifier
+
+		if skillName == mainWeaponType then
+			mainSkill = skillRank + numTempPoints + skillModifier
+		end
+
+		if skillName == offWeaponType then
+			offSkill = skillRank + numTempPoints + skillModifier
 		end
 	end
+
+	return mainSkill, offSkill
 end
 
 local function GetAttackPower()
@@ -200,11 +210,18 @@ function DataCollector:GetPlayerStats()
 	self.player.guid = UnitGUID("player")
 	self.player.level = UnitLevel("player")
 	if IsClassic() then
-		self.player.weaponType = GetWeaponType() or nil
-		self.player.weaponSkill = GetWeaponSkill() or nil
+		local mhType, ohType = GetWeaponType()
+		local mhSkill, ohSkill = GetWeaponType()
+
+		self.player.mainWeaponType	= mhType or nil
+		self.player.offWeaponType	= ohType or nil
+		self.player.mainWeaponSkill	= mhSkill or nil
+		self.player.offWeaponSkill	= ohSkill or nil
 	else
-		self.player.weaponType =  nil
-		self.player.weaponSkill = nil
+		self.player.mainWeaponType	= nil
+		self.player.offWeaponType	= nil
+		self.player.mainWeaponSkill	= nil
+		self.player.offWeaponSkill	= nil
 	end
 	self.player.ap = GetAttackPower() or nil
 	self.player.crit = GetPlayerCritChance() or nil
@@ -216,7 +233,7 @@ function DataCollector:GetPlayerStats()
 	end
 
 	-- debug
-	debug("Player stats collected.", format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.weaponType, self.player.weaponSkill, self.player.ap, self.player.crit, self.player.hit)))
+	debug("Player stats collected.", format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit)))
 end
 
 function DataCollector:GetTargetStats()
@@ -242,7 +259,7 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 
 	if logType == PLAYER then
 		-- set log string
-		logString = format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, logType, tostringall(self.player.guid, self.player.name, self.player.level, self.player.weaponType, self.player.weaponSkill, self.player.ap, self.player.crit, self.player.hit))
+		logString = format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit))
 
 		-- insert entry into the SavedVariables log
 		tinsert(MageyLogData, logString)
