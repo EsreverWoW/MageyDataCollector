@@ -217,7 +217,7 @@ function DataCollector:GetPlayerStats()
 	self.player.level = UnitLevel("player")
 	if IsClassic() then
 		local mhType, ohType = GetWeaponType()
-		local mhSkill, ohSkill = GetWeaponType()
+		local mhSkill, ohSkill = GetWeaponSkill()
 
 		self.player.mainWeaponType	= mhType or nil
 		self.player.offWeaponType	= ohType or nil
