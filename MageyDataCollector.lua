@@ -7,9 +7,8 @@ local addon, ns = ...
 local isDebug = false
 local debugLevel = 2
 
--- log formatting
-local localizedStrings = false
-local logVersion = 2
+-- blacklist / whitelist
+local useBlacklist = false
 
 --------------------------------------
 --	Init
@@ -32,6 +31,27 @@ DataCollector.player = {}
 DataCollector.target = {}
 
 --------------------------------------
+--	Spell / Aura Blacklist
+--------------------------------------
+local function SpellName(spellID)
+	local name = GetSpellInfo(spellID)
+	if name then
+		return name
+	else
+		print("|cffff0000WARNING: Spell ID ["..tostring(spellID).."] does not exist! Report this to Es.|r")
+	end
+end
+
+-- get the spell ID by looking up the spell on Wowhead and copying the ID from the URL
+-- example:	https://classic.wowhead.com/spell=#####
+-- format:	[SpellName(#####)] = true,		-- Commented Name
+-- getting the spell name from the client means we don't need a spell ID for every rank
+-- it also is necessary to ensure that the spell remains blaklisted for other locales
+local blacklist = {
+	[SpellName(7384)] = true,		-- Overpower
+}
+
+--------------------------------------
 --	Event Registry
 --------------------------------------
 -- gather player name/GUID/level/stats
@@ -52,40 +72,17 @@ DataCollector:RegisterEvent("PLAYER_TARGET_CHANGED")
 DataCollector:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 
 --------------------------------------
---	Strings
+--	Format Strings
 --------------------------------------
-local PLAYER		= localizedStrings and PLAYER				or "Player"
-local TARGET		= localizedStrings and TARGET				or "Target"
-local HIT			= localizedStrings and HIT					or "Hit" 
-local CRIT			= localizedStrings and CRIT_ABBR			or "Crit"
-local MISS			= localizedStrings and MISS					or "Miss"
-local PARRY			= localizedStrings and PARRY				or "Parry"
-local SPELL			= localizedStrings and STAT_CATEGORY_SPELL	or "Spell"
-
-local MH			= "MH_"
-local OH			= "OH_"
-local SPELLCRIT		= SPELL.."_"..CRIT
-local SPELLMISS		= SPELL.."_"..MISS
-local SPELLPARRY	= SPELL.."_"..PARRY
-
-PLAYER				= string.upper(PLAYER)
-TARGET				= string.upper(TARGET)
-HIT					= string.upper(HIT)
-CRIT				= string.upper(CRIT)
-MISS				= string.upper(MISS)
-PARRY				= string.upper(PARRY)
-SPELL				= string.upper(SPELL)
-SPELLCRIT			= string.upper(SPELLCRIT)
-SPELLMISS			= string.upper(SPELLMISS)
-SPELLPARRY			= string.upper(SPELLPARRY)
-
-if logVersion == 2 then
-	PLAYER			= "PLAYER_STATS_CHANGED"
-	TARGET			= "PLAYER_TARGET_CHANGED"
-end
-
-local playerFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 12
-local targetFormat	= "%s,%s,%s,%s,%s" -- 5
+local fmt5	= "%s,%s,%s,%s,%s" -- 5
+local fmt12	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 12
+local fmt13	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 13
+local fmt14	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 14
+local fmt15	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 15
+local fmt16	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 16
+local fmt17	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 17
+local fmt20	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 20
+local fmt23	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 23
 
 --------------------------------------
 --	Utility
@@ -228,13 +225,11 @@ function DataCollector:GetPlayerStats()
 	self.player.crit = GetPlayerCritChance() or nil
 	self.player.hit = GetHitModifier() or nil
 
-	-- emulate WoWCombatLog.txt for log v2
-	if logVersion == 2 then
-		self.player.name = "'"..self.player.name.."'"
-	end
+	-- emulate WoWCombatLog.txt
+	if self.player.name then self.player.name = "'"..self.player.name.."'" end
 
 	-- debug
-	debug("Player stats collected.", format(playerFormat, currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit)))
+	debug("Player stats collected.", format(fmt12, currentTime, "PLAYER_STATS_CHANGED", tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit)))
 end
 
 function DataCollector:GetTargetStats()
@@ -245,31 +240,29 @@ function DataCollector:GetTargetStats()
 	self.target.guid = UnitGUID("target") or nil
 	self.target.level = UnitLevel("target") or nil
 
-	-- emulate WoWCombatLog.txt for log v2
-	if logVersion == 2 then
-		self.target.name = "'"..self.target.name.."'"
-	end
+	-- emulate WoWCombatLog.txt
+	if self.target.name then self.target.name = "'"..self.target.name.."'" end
 
 	-- debug
-	debug("Target stats collected.", format(targetFormat, currentTime, TARGET, tostringall(self.target.guid, self.target.name, self.target.level)))
+	debug("Target stats collected.", format(fmt5, currentTime, "PLAYER_TARGET_CHANGED", tostringall(self.target.guid, self.target.name, self.target.level)))
 end
 
 function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 	-- shared local
 	local logString
 
-	if logType == PLAYER then
+	if logType == "PLAYER_STATS_CHANGED" then
 		-- set log string
-		logString = format(playerFormat, currentTime, PLAYER, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit))
+		logString = format(fmt12, currentTime, logType, tostringall(self.player.guid, self.player.name, self.player.level, self.player.mainWeaponType, self.player.offWeaponType, self.player.mainWeaponSkill, self.player.offWeaponSkill, self.player.ap, self.player.crit, self.player.hit))
 
 		-- insert entry into the SavedVariables log
 		tinsert(MageyLogData, logString)
 
 		-- debug
 		debug(logType.." logged.", logString)
-	elseif logType == TARGET then
+	elseif logType == "PLAYER_TARGET_CHANGED" then
 		-- set log string
-		logString = format(targetFormat, currentTime, logType, tostringall(self.target.guid, self.target.name, self.target.level))
+		logString = format(fmt5, currentTime, logType, tostringall(self.target.guid, self.target.name, self.target.level))
 
 		-- insert entry into the SavedVariables log
 		tinsert(MageyLogData, logString)
@@ -279,143 +272,90 @@ function DataCollector:LogToSavedVariables(currentTime, logType, ...)
 	end
 		
 	-- we're done here if there was no combat event
-	if logType == PLAYER or logType == TARGET then return end
+	if logType == "PLAYER_STATS_CHANGED" or logType == "PLAYER_TARGET_CHANGED" then return end
 
-	if logVersion == 1 then
-		--locals
-		local destGUID
-		local spellID, spellName, spellSchool
-		local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand
-		local missType, amountMissed
-	
-		if logType == HIT then
-			destGUID, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = ...
+	-- shared arguments (we skip the first argument of hideCaster)
+	local sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = select(2, ...)
 
-			-- change logType to CRIT if the hit was critical
-			if critical then logType = CRIT end
+	-- locals
+	local spellID, spellName, spellSchool
+	local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand
+	local missType, amountMissed
+	local extraSpellID, extraSpellName, extraSchool, auraType
+	local failedType
 
-			-- change logType to indicate main-hand / off-hand
-			if isOffHand then
-				logType = OH..logType
-			else
-				logType = MH..logType
-			end
+	-- emulate WoWCombatLog.txt
+	if sourceName		then sourceName			= "'"..sourceName.."'"						end
+	if sourceFlags		then sourceFlags		= string.format("0x%x", sourceFlags)		end
+	if sourceRaidFlags	then sourceRaidFlags	= string.format("0x%x", sourceRaidFlags)	end
+	if destName			then destName			= "'"..destName.."'"						end
+	if destFlags		then destFlags			= string.format("0x%x", destFlags)			end
+	if destRaidFlags	then destRaidFlags		= string.format("0x%x", destRaidFlags)		end
 
-			-- set log string
-			logString = format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, logType, tostringall(amount, overkill, school, resisted, blocked, absorbed, glancing, crushing))
-		elseif logType == MISS then
-			-- get variable arguments
-			destGUID, missType, isOffHand, amountMissed = ...
+	if logType == "SWING_DAMAGE" then
+		amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(10, ...)
 
-			-- only log misses if the combat log event is against our current target
-			if destGUID ~= self.target.guid then return end
+		-- set log string
+		logString = format(fmt20, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand))
+	elseif logType == "SWING_MISSED" then
+		missType, isOffHand, amountMissed = select(10, ...)
 
-			-- change logType to indicate main-hand / off-hand
-			if isOffHand then
-				logType = OH..logType
-			else
-				logType = MH..logType
-			end
-
-			-- set log string
-			logString = format("%s,%s,%s,%s", currentTime, logType, tostringall(missType, amountMissed))
-		elseif logType == PARRY then
-			-- get variable arguments
-			destGUID, amountMissed = ...
-
-			-- only log parrys if the combat log event is against the player
-			if destGUID ~= self.target.player then return end
-
-			-- set log string
-			logString = format("%s,%s,%s", currentTime, logType, tostringall(amountMissed))
-		elseif logType == SPELL then
-			-- get variable arguments
-			destGUID, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = ...
-
-			-- change logType to CRIT if the hit was critical
-			if critical then logType = CRIT end
-
-			-- change logType to indicate main-hand / off-hand
-			if isOffHand then
-				logType = OH..logType
-			else
-				logType = MH..logType
-			end
-
-			-- set log string
-			logString = format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", currentTime, logType, tostringall(spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing))
-		elseif logType == SPELLMISS then
-			-- get variable arguments
-			destGUID, spellID, spellName, spellSchool, missType, isOffHand, amountMissed = ...
-
-			-- change logType to indicate main-hand / off-hand
-			if isOffHand then
-				logType = OH..logType
-			else
-				logType = MH..logType
-			end
-
-			-- set log string
-			logString = format("%s,%s,%s,%s,%s,%s,%s", currentTime, logType, tostringall(spellID, spellName, spellSchool, missType, amountMissed))
-		elseif logType == SPELLPARRY then
-			-- get variable arguments
-			destGUID, spellID, spellName, spellSchool, amountMissed = ...
-
-			-- only log parrys if the combat log event is against the player
-			if destGUID ~= self.target.player then return end
-
-			-- set log string
-			logString = format("%s,%s,%s,%s,%s,%s", currentTime, logType, tostringall(spellID, spellName, spellSchool, amountMissed))
-		end
-	elseif logVersion == 2 then
+		-- set log string
+		logString = format(fmt13, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed))
+	else
 		-- shared arguments
-		local sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = select(2, ...)
-
-		-- locals
-		local spellID, spellName, spellSchool
-		local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand
-		local missType, amountMissed
-
-		-- 24 returns from CLEU (but we exclude hideCaster to match WoWCombatLog.txt - https://wow.gamepedia.com/COMBAT_LOG_EVENT
-		local swingHitFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 20
-		local swingMissFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 13
-		local spellHitFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 23
-		local spellMissFormat	= "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" -- 16
+		spellID, spellName, spellSchool = select(10, CombatLogGetCurrentEventInfo())
 
 		-- emulate WoWCombatLog.txt
-		sourceName		= "'"..sourceName.."'"
-		sourceFlags		= string.format("0x%x", sourceFlags)
-		sourceRaidFlags	= string.format("0x%x", sourceRaidFlags)
-		destName		= "'"..destName.."'"
-		destFlags		= string.format("0x%x", destFlags)
-		destRaidFlags	= string.format("0x%x", destRaidFlags)
+		if spellName then spellName = "'"..spellName.."'" end
 
-		if logType == "SWING_DAMAGE" then
-			amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(10, ...)
+		if logType == "SPELL_EXTRA_ATTACKS" then
+			-- get subEvent specific arguments
+			amount = select(13, ...)
 
 			-- set log string
-			logString = format(swingHitFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand))
-		elseif logType == "SWING_MISSED" then
-			missType, isOffHand, amountMissed = select(10, ...)
-
-			-- set log string
-			logString = format(swingMissFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed))
+			logString = format(fmt14, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount))
 		elseif logType == "SPELL_DAMAGE" then
-			spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(10, ...)
-
-			-- emulate WoWCombatLog.txt
-			spellName = "'"..spellName.."'"
+			-- get subEvent specific arguments
+			amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(13, ...)
 
 			-- set log string
-			logString = format(spellHitFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand))
+			logString = format(fmt23, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand))
 		elseif logType == "SPELL_MISSED" then
-			spellID, spellName, spellSchool, missType, isOffHand, amountMissed = select(10, ...)
-
-			-- emulate WoWCombatLog.txt
-			spellName = "'"..spellName.."'"
+			-- get subEvent specific arguments
+			missType, isOffHand, amountMissed = select(13, ...)
 
 			-- set log string
-			logString = format(spellMissFormat, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, missType, isOffHand, amountMissed))
+			logString = format(fmt16, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, missType, isOffHand, amountMissed))
+		elseif logType == "SPELL_CAST_START" or logType == "SPELL_CAST_SUCCESS" then
+			-- set log string
+			logString = format(fmt13, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool))
+		elseif logType == "SPELL_CAST_FAILED" then
+			-- get subEvent specific arguments
+			failedType = select(13, ...) -- may want to look into ensuring English-only strings
+
+			-- set log string
+			logString = format(fmt14, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, failedType))
+		else
+			if logType == "SPELL_AURA_BROKEN" then
+				-- get subEvent specific arguments
+				auraType = select(13, ...)
+
+				-- set log string
+				logString = format(fmt14, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, auraType))
+			elseif logType == "SPELL_AURA_BROKEN_SPELL" then
+				-- get subEvent specific arguments
+				extraSpellID, extraSpellName, extraSchool, auraType = select(13, ...)
+
+				-- set log string
+				logString = format(fmt17, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, extraSpellID, extraSpellName, extraSchool, auraType))
+			elseif string.find(logType, "SPELL_AURA") or string.find(logType, "SPELL_PERIODIC_AURA") then
+				-- get subEvent specific arguments
+				auraType, amount = select(13, ...)
+
+				-- set log string
+				logString = format(fmt15, currentTime, logType, tostringall(sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, auraType, amount))
+			end
 		end
 	end
 
@@ -446,7 +386,7 @@ DataCollector:SetScript("OnEvent", function(self, event, ...)
 			SetCVar("advancedCombatLogging", 1)
 		end
 
-		-- only check for aura changes when event is fired for the player
+		-- only check for stat changes when the UNIT_AURA event is fired for the player
 		if event == "UNIT_AURA" then
 			local unitTarget = ...
 			if unitTarget ~= "player" then return end
@@ -462,14 +402,14 @@ DataCollector:SetScript("OnEvent", function(self, event, ...)
 		local oldPlayerStats = CopyTable(self.player)
 		self:GetPlayerStats()
 		if CompareTable(oldPlayerStats, self.player) == false then
-			self:LogToSavedVariables(currentTime, PLAYER)
+			self:LogToSavedVariables(currentTime, "PLAYER_STATS_CHANGED")
 		end
 	elseif event == "PLAYER_TARGET_CHANGED" then
 		-- only log if there is new target info
 		local oldTargetStats = CopyTable(self.target)
 		self:GetTargetStats()
 		if CompareTable(oldTargetStats, self.target) == false then
-			self:LogToSavedVariables(currentTime, TARGET)
+			self:LogToSavedVariables(currentTime, "PLAYER_TARGET_CHANGED")
 		end
 	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
 		-- get shared arguments
@@ -480,84 +420,122 @@ DataCollector:SetScript("OnEvent", function(self, event, ...)
 		currentTime = date("%Y/%m/%d %H:%M:%S", currentTimeMS)
 		currentTime = currentTime..string.sub(string.format("%.3f", currentTimeMS % 1), 2)
 
-		-- skip if event where the player is not the source or destination
-		if sourceGUID ~= self.player.guid and destGUID ~= self.player.guid then return end
-
-		-- locals for subEvent specific arguments
-		local spellID, spellName, spellSchool
-		local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand
-		local missType, amountMissed
-
+		-- branch based on subEvent
 		if subEvent == "SWING_DAMAGE" then
+			-- skip if event where the player is not the source or destination
+			if sourceGUID ~= self.player.guid and destGUID ~= self.player.guid then return end
+
 			-- only log if the combat log event is against our current target
 			if destGUID ~= self.target.guid then return end
 
 			-- get subEvent specific arguments
-			amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(12, CombatLogGetCurrentEventInfo())
+			local amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(12, CombatLogGetCurrentEventInfo())
 
 			-- log
-			if logVersion == 1 then
-				self:LogToSavedVariables(currentTime, HIT, destGUID, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
-			elseif logVersion == 2 then
-				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
-			end
+			self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
 		elseif subEvent == "SWING_MISSED" then
+			-- skip if event where the player is not the source or destination
+			if sourceGUID ~= self.player.guid and destGUID ~= self.player.guid then return end
+
 			-- get subEvent specific arguments
-			missType, isOffHand, amountMissed = select(12, CombatLogGetCurrentEventInfo())
+			local missType, isOffHand, amountMissed = select(12, CombatLogGetCurrentEventInfo())
 
 			-- player miss against target / player parry from enemy
-			if destGUID == self.player.guid and missType == "PARRY" then
+			if destGUID == self.player.guid and (missType == PARRY or missType == "PARRY") then
 				-- log
-				if logVersion == 1 then
-					self:LogToSavedVariables(currentTime, PARRY, destGUID, amountMissed)
-				elseif logVersion == 2 then
-					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed)
-				end
+				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed)
 			else
 				-- skip if swing didn't come from the player
 				if sourceGUID ~= self.player.guid then return end
 
 				-- log
-				if logVersion == 1 then
-					self:LogToSavedVariables(currentTime, MISS, destGUID, missType, isOffHand, amountMissed)
-				elseif logVersion == 2 then
-					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed)
-				end
+				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, missType, isOffHand, amountMissed)
 			end
-		elseif subEvent == "SPELL_DAMAGE" then
-			-- only log if the combat log event is against our current target
-			if destGUID ~= self.target.guid then return end
+		else
+			-- get shared arguments
+			local spellID, spellName, spellSchool = select(12, CombatLogGetCurrentEventInfo())
 
-			-- get subEvent specific arguments
-			spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(12, CombatLogGetCurrentEventInfo())
+			-- skip logging of blacklisted spells
+			if useBlacklist and blacklist[spellID] then return end
 
-			-- log
-			if logVersion == 1 then
-				self:LogToSavedVariables(currentTime, SPELL, destGUID, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
-			elseif logVersion == 2 then
+			if subEvent == "SPELL_EXTRA_ATTACKS" then
+				-- skip if event where the player is not the source or destination
+				if sourceGUID ~= self.player.guid and destGUID ~= self.player.guid then return end
+
+				-- only log if the combat log event is against our current target
+				if destGUID ~= self.target.guid then return end
+
+				-- get subEvent specific arguments
+				local amount = select(15, CombatLogGetCurrentEventInfo())
+
+				-- log
+				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount)
+			elseif subEvent == "SPELL_DAMAGE" then
+				-- skip if event where the player is not the source
+				if sourceGUID ~= self.player.guid then return end
+
+				-- only log if the combat log event is against our current target
+				if destGUID ~= self.target.guid then return end
+
+				-- get subEvent specific arguments
+				amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand = select(15, CombatLogGetCurrentEventInfo())
+
+				-- log
 				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing, isOffHand)
-			end
-		elseif subEvent == "SPELL_MISSED" then
-			-- get subEvent specific arguments
-			spellID, spellName, spellSchool, missType, isOffHand, amountMissed = select(12, CombatLogGetCurrentEventInfo())
+			elseif subEvent == "SPELL_MISSED" then
+				-- skip if event where the player is not the source or destination
+				if sourceGUID ~= self.player.guid and destGUID ~= self.player.guid then return end
 
-			-- player miss against target / player parry from enemy
-			if destGUID == self.player.guid and missType == "PARRY" then
-				-- log
-				if logVersion == 1 then
-					self:LogToSavedVariables(currentTime, SPELLPARRY, destGUID, spellID, spellName, spellSchool, amountMissed)
-				elseif logVersion == 2 then
+				-- get subEvent specific arguments
+				missType, isOffHand, amountMissed = select(15, CombatLogGetCurrentEventInfo())
+
+				-- player miss against target / player parry from enemy
+				if destGUID == self.player.guid and (missType == PARRY or missType == "PARRY") then
+					-- log
+					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, missType, isOffHand, amountMissed)
+				else
+					-- skip if swing didn't come from the player
+					if sourceGUID ~= self.player.guid then return end
+
+					-- log
 					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, missType, isOffHand, amountMissed)
 				end
-			else
-				-- skip if swing didn't come from the player
+			elseif subEvent == "SPELL_CAST_START" or subEvent == "SPELL_CAST_SUCCESS" then
+				-- skip if event where the player is not the source
 				if sourceGUID ~= self.player.guid then return end
 
 				-- log
-				if logVersion == 1 then
-					self:LogToSavedVariables(currentTime, SPELLMISS, destGUID, spellID, spellName, spellSchool, missType, isOffHand, amountMissed)
-				elseif logVersion == 2 then
-					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, missType, isOffHand, amountMissed)
+				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool)
+			elseif subEvent == "SPELL_CAST_FAILED" then
+				-- skip if event where the player is not the source
+				if sourceGUID ~= self.player.guid then return end
+
+				local failedType = select(15, CombatLogGetCurrentEventInfo())
+
+				-- log
+				self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, failedType)
+			else
+				-- only log if the combat log event is being applied to the player
+				if destGUID ~= self.player.guid then return end
+
+				if subEvent == "SPELL_AURA_BROKEN" then
+					-- get subEvent specific arguments
+					local auraType = select(15, CombatLogGetCurrentEventInfo())
+
+					-- log
+					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, auraType)
+				elseif subEvent == "SPELL_AURA_BROKEN_SPELL" then
+					-- get subEvent specific arguments
+					local extraSpellID, extraSpellName, extraSchool, auraType = select(15, CombatLogGetCurrentEventInfo())
+
+					-- log
+					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, extraSpellID, extraSpellName, extraSchool, auraType)
+				elseif string.find(subEvent, "SPELL_AURA") or string.find(subEvent, "SPELL_PERIODIC_AURA") then
+					-- get subEvent specific arguments
+					local auraType, amount = select(15, CombatLogGetCurrentEventInfo())
+
+					-- log
+					self:LogToSavedVariables(currentTime, subEvent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool, auraType, amount)
 				end
 			end
 		end
